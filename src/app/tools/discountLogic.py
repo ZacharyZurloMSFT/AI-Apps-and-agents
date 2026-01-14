@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 load_dotenv()
@@ -8,21 +10,30 @@ from opentelemetry import trace
 from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.ai.agents.telemetry import trace_function
 import time
-# from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
+from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
 
 # Enable Azure Monitor tracing
 application_insights_connection_string = os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"]
-# configure_azure_monitor(connection_string=application_insights_connection_string)
-# OpenAIInstrumentor().instrument()
+configure_azure_monitor(connection_string=application_insights_connection_string)
+OpenAIInstrumentor().instrument()
 
 # scenario = os.path.basename(__file__)
 # tracer = trace.get_tracer(__name__)
 
-#Azure OpenAI
-endpoint = os.getenv("gpt_endpoint")
+# Initialize Azure AI Project Client with AAD auth
+project_endpoint = os.getenv("FOUNDRY_ENDPOINT") or os.getenv("gpt_endpoint")
 deployment = os.getenv("gpt_deployment")
-api_key = os.getenv("gpt_api_key")
-api_version = os.getenv("gpt_api_version")
+
+if not project_endpoint:
+    raise ValueError("FOUNDRY_ENDPOINT or gpt_endpoint is required")
+
+project_client = AIProjectClient(
+    endpoint=project_endpoint,
+    credential=DefaultAzureCredential(),
+)
+
+# Get OpenAI client configured for Projects endpoint (handles auth + api_version)
+client = project_client.get_openai_client()
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))  # Go up 2 levels from src/tools/ to root
@@ -129,12 +140,7 @@ def calculate_discount(CustomerID):
         Returns:
             float: Discount amount to be applied based on the business logic.
         """
-        # Initialize client
-        client = AzureOpenAI(
-            azure_endpoint=endpoint,
-            api_key=api_key,
-            api_version=api_version,
-        )
+        # Client is already initialized at module level with AAD auth
         # print(f"loyalty_info is:{loyalty_info}, invoice value: {InvoiceValue} and transaction_info is:{transaction_info}")
         prompt= "Bruno's total transaction price in this year"+ transaction_info + "and his data"+str(loyalty_info)
         # print(f"prompt:{prompt}")
@@ -161,7 +167,7 @@ def calculate_discount(CustomerID):
             }
         ]
 
-        # Generate chat completion
+        # Generate chat completion (using chat.completions for this GPT call)
         completion = client.chat.completions.create(
             model=deployment,
             messages=chat_prompt,

@@ -18,12 +18,12 @@ from azure.ai.agents.telemetry import trace_function
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
-# from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
+from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
 
 # # Enable Azure Monitor tracing
 application_insights_connection_string = os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"]
-# configure_azure_monitor(connection_string=application_insights_connection_string)
-# OpenAIInstrumentor().instrument()
+configure_azure_monitor(connection_string=application_insights_connection_string)
+OpenAIInstrumentor().instrument()
 
 # scenario = os.path.basename(__file__)
 # tracer = trace.get_tracer(__name__)
@@ -265,7 +265,10 @@ class AgentProcessor:
 
             # Robustly extract all text values from all blocks
             content = message.output_text
-            if isinstance(content, list):
+            if isinstance(content, str):
+                # output_text is a plain string - return it directly
+                return content
+            elif isinstance(content, list):
                 text_blocks = []
                 for j, block in enumerate(content):
                     if isinstance(block, dict):
@@ -278,13 +281,11 @@ class AgentProcessor:
                             if text_val:
                                 text_blocks.append(text_val)
                 if text_blocks:
-                    # Join all text blocks with newlines if multiple
-                    result = ['\n'.join(text_blocks)]
-                    return result
+                    # Join all text blocks with newlines and return as string
+                    return '\n'.join(text_blocks)
             
             # Fallback: return stringified content
-            result = [str(content)]
-            return result
+            return str(content)
                 
         except Exception as e:
             print(f"[ERROR] Conversation failed: {str(e)}")
@@ -295,11 +296,16 @@ class AgentProcessor:
         print(f"[DEBUG] Async conversation pipeline initiated - commencing message processing protocol", flush=True)
         loop = asyncio.get_event_loop()
         try:
-            messages = await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 _executor, self._run_conversation_sync, input_message
             )
-            for i, msg in enumerate(messages):
-                yield msg
+            # Wrap single string in list to avoid iterating character-by-character
+            if isinstance(result, str):
+                yield result
+            else:
+                # If it's already a list/iterable, yield each item
+                for msg in result:
+                    yield msg
         except Exception as e:
             print(f"[ERROR] Async conversation failed: {str(e)}")
             yield f"Error processing message: {str(e)}"

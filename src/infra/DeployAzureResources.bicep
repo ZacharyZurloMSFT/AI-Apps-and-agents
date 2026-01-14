@@ -25,7 +25,7 @@ module updateRgTags 'updateRgTags.bicep' = {
   params: {
     rgName: resourceGroup().name
     rgLocation: resourceGroup().location
-    newTags: union(resourceGroup().tags ?? {}, { SecurityGroup: 'Ignore' })
+    newTags: union(resourceGroup().tags ?? {}, { SecurityControl: 'Ignore' })
   }
 }
 
